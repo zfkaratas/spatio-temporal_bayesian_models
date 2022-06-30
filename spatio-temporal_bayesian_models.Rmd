@@ -1,0 +1,91 @@
+#Graphs
+
+```{r}
+library(maps)
+map("world", fill = TRUE, col = "white", bg = "lightblue", xlim = c(25.5, 32.5), ylim = c(39, 43), xlab = "Longitude", ylab = "Latitude", lwd = 1, mar = c(0, 0, 0,0))
+points(x = deprem$Longitude, y = deprem$Latitude, col = "red", pch = 1)
+```
+
+```{r}
+library(leaflet)
+dat <- deprem[!is.na(deprem$Longitude)&!is.na(deprem$Latitude),]
+dat %>% 
+    leaflet() %>% 
+    addTiles() %>% 
+    addMarkers(popup=dat$database.csv , clusterOptions = markerClusterOptions(spiderfyDistanceMultiplier=0.5))
+```
+
+```{r}
+h <- hist(deprem$Year,main="Earthquake Number according to Year", xlab="Year", xlim=c(1990,2022), ylim=c(0,80), col="red")
+text(h$mids,h$counts,labels=h$counts, adj=c(0.5, -0.5))
+```
+
+```{r}
+library("bmstdr")
+library("ggplot2")
+
+ggplot(data = deprem,aes(x=Year, y=Depth, colour=xM)) +
+  geom_point(size=4, alpha=0.3)+
+  scale_color_gradient(low="orange", high = "dark red") +
+  labs(title="Magnitudes based on Year", subtitle = "Density Plot", x="Year", y="Depth in kilometer")
+```
+
+```{r}
+library(plotly)
+plot_ly(deprem, x = ~Year, y = ~Depth, color = ~xM, size = ~xM, colors = "YlOrRd")
+```
+
+```{r}
+bmstdr_variogram(formula=xM~Longitude+Latitude,coordtype="lonlat",data=deprem) #the variogram cloud and an estimated variogram.
+```
+
+#Models
+
+```{r}
+vrows <- sample(nrow(deprem), 100)
+M1 <- Bspatial(formula=xM~Depth, data=deprem, validrows=vrows, mchoice=T) #linear regression model
+M2 <- Bspatial(model="spat", formula=xM~Depth, data=deprem, validrows=vrows,
+               coordtype="lonlat", coords=4:5, mchoice=T) #linear regression model with spatial error distribution
+M3 <- Bspatial(package="spBayes", formula=xM~Depth, data=deprem, validrows=vrows,
+               coordtype="lonlat", coords=4:5, mchoice=T) #spatial model with nugget effect by using spBayes
+M4 <- Bspatial(package="stan", formula=xM~Depth, data=deprem, validrows=vrows,
+               coordtype="lonlat", coords=4:5, mchoice=T) #spatial model with nugget effect by using stan
+#M5 <- Bspatial(package="inla",formula=xM~Depth, data=deprem, 
+#               coordtype="lonlat", coords=4:5, mchoice=T) #spatial model with nugget effect by using inla
+
+
+M6 <- Bsptime(model="lm", formula=xM~Depth, data=deprem, validrows=vrows) #spatio-temporal regression model
+M7 <- Bsptime(model="separable", formula=xM~Depth, data=deprem, validrows=vrows,
+              coordtype="lonlat", coords=4:5) #spatio-temporal separable model
+M8 <- Bsptime(package="spTimer", formula=xM~Depth, data=deprem, n.report=5, validrows=vrows,
+              coordtype="lonlat", coords=4:5, mchoice=T) #spatio-temporal model by using spTimer
+
+M1.valstats <- calculate_validation_statistics(M1$yobs_preds$xM, yits=M1$valpreds)
+M2.valstats <- calculate_validation_statistics(M2$yobs_preds$xM, yits=M2$valpreds)
+M3.valstats <- calculate_validation_statistics(M3$yobs_preds$xM, yits=M3$valpreds)
+M4.valstats <- calculate_validation_statistics(M4$yobs_preds$xM, yits=M4$valpreds)
+M6.valstats <- calculate_validation_statistics(M6$yobs_preds$xM, yits=M6$valpreds)
+M7.valstats <- calculate_validation_statistics(M7$yobs_preds$xM, yits=M7$valpreds)
+M8.valstats <- calculate_validation_statistics(M8$yobs_preds$xM, yits=M8$valpreds)
+
+unlist(M1.valstats)
+unlist(M2.valstats)
+unlist(M3.valstats)
+unlist(M4.valstats)
+unlist(M6.valstats)
+unlist(M7.valstats)
+unlist(M8.valstats)
+
+M8.res <- residuals(M8)
+plot(M8$residuals, xlab = "Observation number", ylab = "Residuals", pch=16)
+hist(M8$valpreds, xlab = "Posterior predictive", freq = FALSE)
+
+ks.test(M8$residuals, "pnorm")
+
+(M8$params$mean[1]-0)/(M8$params$sd[1])
+(M8$params$mean[2]-0)/(M8$params$sd[2])
+(M8$params$mean[3]-0)/(M8$params$sd[3])
+(M8$params$mean[4]-0)/(M8$params$sd[4])
+(M8$params$mean[5]-0)/(M8$params$sd[5])
+```
+
